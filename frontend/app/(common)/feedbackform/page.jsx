@@ -22,7 +22,10 @@ export default function SubmitFeedback() {
     (async () => {
       try {
         const items = await listLegislation();
-        if (isMounted) setLegislations(items);
+        const activeItems = items.filter(
+          (item) => (item.status || "active").toLowerCase() === "active",
+        );
+        if (isMounted) setLegislations(activeItems);
       } catch (e) {
         console.error("Failed to load legislation", e);
       } finally {
@@ -100,10 +103,15 @@ export default function SubmitFeedback() {
                   value={legislation}
                   onChange={(e) => setLegislation(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500"
+                  disabled={!loadingLeg && legislations.length === 0}
                   required
                 >
                   <option value="" disabled>
-                    {loadingLeg ? "Loading..." : "Select legislation"}
+                    {loadingLeg
+                      ? "Loading..."
+                      : legislations.length
+                        ? "Select legislation"
+                        : "No active legislation available"}
                   </option>
                   {legislations.map((item) => (
                     <option key={item.id} value={item.legislationId || item.id}>
@@ -147,11 +155,14 @@ export default function SubmitFeedback() {
                         onClick={() => setRating(star)}
                         className="cursor-pointer text-gray-400 hover:text-indigo-500 transition"
                       />
-                    )
+                    ),
                   )}
                 </div>
                 <div className="mt-2 text-xs text-gray-500">
-                  <p>1 star → Very Negative, 2 stars → Negative, 3 stars → Neutral / Mixed,</p>
+                  <p>
+                    1 star → Very Negative, 2 stars → Negative, 3 stars →
+                    Neutral / Mixed,
+                  </p>
                   <p>4 stars → Positive, 5 stars → Very Positive</p>
                 </div>
               </div>

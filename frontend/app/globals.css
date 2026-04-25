@@ -1,1 +1,27 @@
 @import "tailwindcss";
+
+.pdf-safe,
+.pdf-safe * {
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+.pdf-safe section,
+.pdf-safe article,
+.pdf-safe table,
+.pdf-safe tr,
+.pdf-safe img,
+.pdf-safe svg,
+.pdf-safe p,
+.pdf-safe h1,
+.pdf-safe h2,
+.pdf-safe h3,
+.pdf-safe h4 {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.pdf-safe img,
+.pdf-safe svg {
+  max-width: 100%;
+}

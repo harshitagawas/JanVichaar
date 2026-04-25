@@ -1,27 +1,37 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { listComments, listLegislation } from "@/lib/legislation";
-import {
-  PieChart,
-  Pie,
-  Cell,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
+import AnalysisReport from "@/components/AnalysisReport";
+import { listLegislation } from "@/lib/legislation";
+import { prepareAnalysisReport } from "@/lib/analysisReport";
+import { captureChartImages, generatePDF } from "@/lib/pdfExport";
+
+function LoadingOverlay({ message }) {
+  if (!message) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35">
+      <div className="rounded bg-white px-6 py-5 shadow-xl text-center">
+        <span className="mx-auto block h-8 w-8 rounded-full border-4 border-indigo-200 border-t-indigo-700 animate-spin" />
+        <p className="mt-3 text-sm font-medium text-gray-800">{message}</p>
+      </div>
+    </div>
+  );
+}
 
 export default function ExportPage() {
   const [legislations, setLegislations] = useState([]);
-  const [selectedLeg, setSelectedLeg] = useState("");
-  const [analysisLoading, setAnalysisLoading] = useState(false);
-  const [downloading, setDownloading] = useState(false);
-  const [analysis, setAnalysis] = useState(null);
+  const [selectedLegislation, setSelectedLegislation] = useState("");
+  const [reportData, setReportData] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isPDFReady, setIsPDFReady] = useState(false);
+  const [isPreparingPdf, setIsPreparingPdf] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
+  const [pdfBlob, setPdfBlob] = useState(null);
+  const [pdfURL, setPdfURL] = useState("");
+  const [chartImages, setChartImages] = useState({});
+  const [isExporting, setIsExporting] = useState(false);
+  const previewRef = useRef(null);
   const pieChartRef = useRef(null);
   const barChartRef = useRef(null);
 
@@ -30,97 +40,68 @@ export default function ExportPage() {
     [],
   );
 
+  const selectedLegislationItem = useMemo(
+    () =>
+      legislations.find(
+        (item) =>
+          (item.legislationId || item.id) === selectedLegislation,
+      ) || null,
+    [legislations, selectedLegislation],
+  );
+
   useEffect(() => {
     let cancelled = false;
+
     (async () => {
       try {
         const items = await listLegislation();
         if (!cancelled) setLegislations(items);
-      } catch (e) {
-        console.error("Failed to load legislations", e);
+      } catch (error) {
+        console.error("Failed to load legislations", error);
       }
     })();
+
     return () => {
       cancelled = true;
     };
   }, []);
 
   useEffect(() => {
+    if (pdfURL) URL.revokeObjectURL(pdfURL);
+
+    setReportData(null);
+    setIsPDFReady(false);
+    setPdfBlob(null);
+    setPdfURL("");
+    setChartImages({});
+    setIsExporting(false);
+
+    if (!selectedLegislation) return undefined;
+
     let cancelled = false;
 
     const runAnalysis = async () => {
-      if (!selectedLeg) {
-        setAnalysis(null);
-        return;
-      }
-
-      setAnalysisLoading(true);
-      setAnalysis(null);
+      setIsAnalyzing(true);
+      setStatusMessage("Analyzing feedback and preparing report...");
 
       try {
-        const comments = await listComments({ legislationId: selectedLeg });
-        const bySentiment = { positive: 0, negative: 0, neutral: 0 };
-
-        comments.forEach((c) => {
-          const label = (c.sentimentLabel || "").toLowerCase();
-          if (label === "positive") bySentiment.positive += 1;
-          else if (label === "negative") bySentiment.negative += 1;
-          else bySentiment.neutral += 1;
+        const report = await prepareAnalysisReport({
+          legislationId: selectedLegislation,
+          legislation: selectedLegislationItem,
+          apiBase,
+          onStatus: (message) => {
+            if (!cancelled) setStatusMessage(message);
+          },
         });
 
-        let regularSummary = "";
-        let wordcloudSummary = "";
-        let wordcloudB64 = "";
-
-        const ksRes = await fetch(`${apiBase}/keyword-summary`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            comments: comments.map((c) => ({ text: c.text, rating: c.rating || 0 })),
-            top_n: 10,
-          }),
-        });
-
-        if (ksRes.ok) {
-          const ksData = await ksRes.json();
-          regularSummary = ksData.regular_summary || "";
-          wordcloudSummary = ksData.wordcloud_summary || "";
-        } else {
-          const sRes = await fetch(`${apiBase}/summarize`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ texts: comments.map((c) => c.text) }),
-          });
-          if (sRes.ok) {
-            const sData = await sRes.json();
-            regularSummary = sData.summary || "";
-          }
-        }
-
-        const wRes = await fetch(`${apiBase}/wordcloud`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ texts: comments.map((c) => c.text) }),
-        });
-
-        if (wRes.ok) {
-          const wData = await wRes.json();
-          wordcloudB64 = wData.image_base64 || "";
-        }
-
-        if (!cancelled) {
-          setAnalysis({
-            comments,
-            bySentiment,
-            regularSummary,
-            wordcloudSummary,
-            wordcloudB64,
-          });
-        }
-      } catch (err) {
-        console.error("Failed to prepare export analysis", err);
+        if (!cancelled) setReportData(report);
+      } catch (error) {
+        console.error("Failed to prepare export analysis", error);
       } finally {
-        if (!cancelled) setAnalysisLoading(false);
+        if (!cancelled) {
+          setIsAnalyzing(false);
+          setStatusMessage("");
+        }
       }
     };
 
@@ -129,236 +110,131 @@ export default function ExportPage() {
     return () => {
       cancelled = true;
     };
-  }, [apiBase, selectedLeg]);
+  }, [apiBase, selectedLegislation, selectedLegislationItem]);
 
-  const analysisReady = !analysisLoading && !!analysis && !!selectedLeg;
-  const pieColors = ["#22c55e", "#ef4444", "#9ca3af"];
-  const ratingSentimentMap = {
-    1: "Very Negative",
-    2: "Negative",
-    3: "Neutral",
-    4: "Positive",
-    5: "Very Positive",
-  };
+  useEffect(() => {
+    if (!reportData || !previewRef.current) return undefined;
 
-  const downloadPdf = async () => {
-    if (!analysisReady) return;
-    setDownloading(true);
-    try {
-      const [{ jsPDF }, html2canvasModule] = await Promise.all([
-        import("jspdf"),
-        import("html2canvas"),
-      ]);
-      const html2canvas = html2canvasModule.default;
-      const doc = new jsPDF();
-      const leg = legislations.find((l) => (l.legislationId || l.id) === selectedLeg);
-      const captureChart = async (ref) => {
-        if (!ref?.current) return null;
-        const canvas = await html2canvas(ref.current, {
-          backgroundColor: "#ffffff",
-          scale: 2,
-          useCORS: true,
+    let cancelled = false;
+
+    const preparePdf = async () => {
+      setIsPreparingPdf(true);
+      setStatusMessage("Preparing PDF...");
+      setIsPDFReady(false);
+
+      try {
+        await new Promise((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(resolve));
         });
-        return canvas.toDataURL("image/png");
-      };
-      const pieChartImage = await captureChart(pieChartRef);
-      const barChartImage = await captureChart(barChartRef);
 
-      let y = 16;
-      doc.setFontSize(16);
-      doc.text("Legislation Analysis Report", 14, y);
-      y += 8;
+        setStatusMessage("Generating visual insights...");
+        const images = await captureChartImages({
+          pie: pieChartRef,
+          bar: barChartRef,
+        });
 
-      doc.setFontSize(11);
-      doc.text(`Legislation: ${leg?.title || selectedLeg}`, 14, y);
-      y += 7;
-      doc.text(`Generated: ${new Date().toLocaleString()}`, 14, y);
-      y += 10;
+        if (cancelled) return;
 
-      doc.text(`Total Comments: ${analysis.comments.length}`, 14, y);
-      y += 6;
-      doc.text(`Positive: ${analysis.bySentiment.positive}`, 14, y);
-      y += 6;
-      doc.text(`Negative: ${analysis.bySentiment.negative}`, 14, y);
-      y += 6;
-      doc.text(`Neutral: ${analysis.bySentiment.neutral}`, 14, y);
-      y += 10;
+        setChartImages(images);
+        setIsExporting(true);
+        await new Promise((resolve) => setTimeout(resolve, 500));
 
-      const splitSummary = doc.splitTextToSize(
-        `Summary: ${analysis.regularSummary || "-"}`,
-        180,
-      );
-      doc.text(splitSummary, 14, y);
-      y += splitSummary.length * 6 + 4;
+        if (cancelled) return;
 
-      if (analysis.wordcloudSummary) {
-        const splitWcSummary = doc.splitTextToSize(
-          `Word Cloud Summary: ${analysis.wordcloudSummary}`,
-          180,
-        );
-        doc.text(splitWcSummary, 14, y);
-        y += splitWcSummary.length * 6 + 6;
-      }
+        setStatusMessage("Preparing PDF...");
+        const { blob, url } = await generatePDF(reportData, {
+          element: previewRef.current,
+        });
 
-      if (analysis.wordcloudB64 && y < 210) {
-        doc.addImage(
-          `data:image/png;base64,${analysis.wordcloudB64}`,
-          "PNG",
-          14,
-          y,
-          180,
-          70,
-        );
-      }
-
-      if (pieChartImage || barChartImage) {
-        doc.addPage();
-        let chartY = 16;
-        doc.setFontSize(14);
-        doc.text("Charts", 14, chartY);
-        chartY += 8;
-
-        if (pieChartImage && barChartImage) {
-          doc.addImage(pieChartImage, "PNG", 14, chartY, 86, 70);
-          doc.addImage(barChartImage, "PNG", 110, chartY, 86, 70);
-        } else if (pieChartImage) {
-          doc.addImage(pieChartImage, "PNG", 14, chartY, 180, 90);
-        } else if (barChartImage) {
-          doc.addImage(barChartImage, "PNG", 14, chartY, 180, 90);
+        if (!cancelled) {
+          setPdfBlob(blob);
+          setPdfURL(url);
+          setIsPDFReady(true);
+        }
+      } catch (error) {
+        console.error("Failed to prepare PDF", error);
+      } finally {
+        if (!cancelled) {
+          setIsPreparingPdf(false);
+          setStatusMessage("");
+          setIsExporting(false);
         }
       }
+    };
 
-      doc.save(`analysis_${selectedLeg}_${Date.now()}.pdf`);
-    } catch (err) {
-      console.error("Failed to export PDF", err);
-    } finally {
-      setDownloading(false);
-    }
+    preparePdf();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [reportData]);
+
+  const downloadPdf = () => {
+    if (!pdfBlob || !isPDFReady) return;
+
+    const link = document.createElement("a");
+    link.href = pdfURL;
+    link.download = `analysis_${selectedLegislation}_${Date.now()}.pdf`;
+    link.click();
   };
 
   return (
     <div className="p-6 space-y-6">
+      <LoadingOverlay message={statusMessage} />
+
       <h2 className="text-2xl font-bold text-gray-800">Export Reports</h2>
 
-      <div className="bg-white shadow rounded p-4 space-y-4">
-        <div>
+      <div
+        data-export="exclude"
+        className="bg-white shadow rounded p-6 max-w-3xl mx-auto text-center space-y-4"
+      >
+        <div className="max-w-lg mx-auto text-left">
           <label className="block mb-2 font-medium">Select Legislation</label>
           <select
-            className="border px-3 py-2 rounded w-full max-w-lg"
-            value={selectedLeg}
-            onChange={(e) => setSelectedLeg(e.target.value)}
+            className="border px-3 py-2 rounded w-full"
+            value={selectedLegislation}
+            onChange={(event) => setSelectedLegislation(event.target.value)}
           >
             <option value="">-- Select --</option>
-            {legislations.map((l) => (
-              <option key={l.id} value={l.legislationId || l.id}>
-                {l.title}
+            {legislations.map((item) => (
+              <option key={item.id} value={item.legislationId || item.id}>
+                {item.title}
               </option>
             ))}
           </select>
         </div>
 
+        {selectedLegislation && (isAnalyzing || isPreparingPdf) && (
+          <div className="flex items-center justify-center gap-2 text-indigo-700">
+            <span className="inline-block h-4 w-4 rounded-full border-2 border-indigo-300 border-t-indigo-700 animate-spin" />
+            {isAnalyzing
+              ? "Analyzing feedback and preparing report..."
+              : "Preparing PDF..."}
+          </div>
+        )}
+
         <button
+          type="button"
           onClick={downloadPdf}
-          disabled={!analysisReady || downloading}
+          disabled={!isPDFReady}
           className="px-4 py-2 bg-indigo-600 text-white rounded disabled:opacity-50"
         >
-          {downloading
-            ? "Downloading..."
-            : analysisLoading
-              ? "Preparing analysis..."
-              : "Download PDF"}
+          Download PDF
         </button>
       </div>
 
-      {selectedLeg && (
-        <div className="bg-white shadow rounded p-4 space-y-3">
-          <h3 className="font-semibold text-lg">Analysis Preview</h3>
-          {analysisLoading ? (
-            <p className="text-gray-600">Generating analysis. Please wait...</p>
-          ) : !analysis ? (
-            <p className="text-gray-600">No analysis available.</p>
-          ) : (
-            <>
-              <p>Total Comments: {analysis.comments.length}</p>
-              <p>Positive: {analysis.bySentiment.positive}</p>
-              <p>Negative: {analysis.bySentiment.negative}</p>
-              <p>Neutral: {analysis.bySentiment.neutral}</p>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-2">
-                <div ref={pieChartRef} className="bg-white border rounded p-4">
-                  <h4 className="font-medium mb-2">Sentiment Distribution</h4>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <PieChart>
-                      <Pie
-                        data={[
-                          { name: "Positive", value: analysis.bySentiment.positive },
-                          { name: "Negative", value: analysis.bySentiment.negative },
-                          { name: "Neutral", value: analysis.bySentiment.neutral },
-                        ]}
-                        dataKey="value"
-                        outerRadius={90}
-                        label
-                      >
-                        {[
-                          { name: "Positive", value: analysis.bySentiment.positive },
-                          { name: "Negative", value: analysis.bySentiment.negative },
-                          { name: "Neutral", value: analysis.bySentiment.neutral },
-                        ].map((entry, index) => (
-                          <Cell
-                            key={entry.name}
-                            fill={pieColors[index % pieColors.length]}
-                          />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                      <Legend />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-
-                <div ref={barChartRef} className="bg-white border rounded p-4">
-                  <h4 className="font-medium mb-2">Rating Distribution</h4>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <BarChart
-                      data={[1, 2, 3, 4, 5].map((r) => ({
-                        rating: String(r),
-                        label: ratingSentimentMap[r],
-                        count: analysis.comments.filter((c) => c.rating === r).length,
-                      }))}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="label" />
-                      <YAxis allowDecimals={false} />
-                      <Tooltip
-                        formatter={(value) => [value, "Count"]}
-                        labelFormatter={(value, payload) => {
-                          const rating = payload?.[0]?.payload?.rating;
-                          return `${rating} Star - ${value}`;
-                        }}
-                      />
-                      <Bar dataKey="count" fill="#3b82f6" name="Responses" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              <p className="text-gray-700">
-                <strong>Summary:</strong> {analysis.regularSummary || "-"}
-              </p>
-              {analysis.wordcloudSummary && (
-                <p className="text-gray-700">
-                  <strong>Word Cloud Summary:</strong> {analysis.wordcloudSummary}
-                </p>
-              )}
-              {analysis.wordcloudB64 && (
-                <img
-                  src={`data:image/png;base64,${analysis.wordcloudB64}`}
-                  alt="Word cloud"
-                  className="w-full max-w-2xl border rounded"
-                />
-              )}
-            </>
-          )}
+      {reportData && (
+        <div className="space-y-3">
+          <h3 className="font-semibold text-lg">PDF Preview</h3>
+          <div ref={previewRef} className="bg-white p-4">
+            <AnalysisReport
+              data={reportData}
+              includeComments={false}
+              isExporting={isExporting}
+              chartImages={chartImages}
+              chartRefs={{ pie: pieChartRef, bar: barChartRef }}
+            />
+          </div>
         </div>
       )}
     </div>

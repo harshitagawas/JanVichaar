@@ -92,9 +92,9 @@ export default function LegislationList() {
                       >
                         {expandedId === law.id ? "Hide" : "View More"}
                       </button>
-                      <button className="px-3 py-1 rounded-md bg-green-100 text-green-700 hover:bg-green-200">
+                      {/* <button className="px-3 py-1 rounded-md bg-green-100 text-green-700 hover:bg-green-200">
                         Analyze
-                      </button>
+                      </button> */}
                     </td>
                   </tr>
                 ))}

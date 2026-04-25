@@ -44,12 +44,12 @@ const navigation = [
     icon: BarChart3,
     description: "Reports and insights",
   },
-  // {
-  //   name: "Export Reports",
-  //   href: "/export",
-  //   icon: Download,
-  //   description: "Download reports",
-  // },
+  {
+    name: "Export Reports",
+    href: "/export",
+    icon: Download,
+    description: "Download reports",
+  },
 ];
 
 const bottomNavigation = [
