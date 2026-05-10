@@ -226,14 +226,16 @@ export default function ExportPage() {
       {reportData && (
         <div className="space-y-3">
           <h3 className="font-semibold text-lg">PDF Preview</h3>
-          <div ref={previewRef} className="bg-white p-4">
-            <AnalysisReport
-              data={reportData}
-              includeComments={false}
-              isExporting={isExporting}
-              chartImages={chartImages}
-              chartRefs={{ pie: pieChartRef, bar: barChartRef }}
-            />
+          <div className="overflow-x-auto bg-gray-50 border p-4 rounded">
+            <div ref={previewRef} className="bg-white p-6 w-[800px] mx-auto shadow-sm">
+              <AnalysisReport
+                data={reportData}
+                includeComments={false}
+                isExporting={isExporting}
+                chartImages={chartImages}
+                chartRefs={{ pie: pieChartRef, bar: barChartRef }}
+              />
+            </div>
           </div>
         </div>
       )}

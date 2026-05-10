@@ -94,12 +94,24 @@ export function Sidebar({ onToggle }) {
       `}
     >
       {/* Header */}
-      <div className="flex items-center justify-between p-4">
-        {!isCollapsed && (
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <FileText className="w-5 h-5 text-primary-foreground" />
-            </div>
+      <div
+        className={`flex ${
+          isCollapsed
+            ? "flex-col items-center gap-2 p-3"
+            : "items-center justify-between p-4"
+        }`}
+      >
+        <div
+          className={`flex items-center ${
+            isCollapsed ? "justify-center w-full" : "space-x-3"
+          }`}
+        >
+          <img
+            src="/janvichaar-logo.png"
+            alt="Janvichaar logo"
+            className="h-10 w-10 flex-shrink-0 rounded-full object-contain"
+          />
+          {!isCollapsed && (
             <div>
               <h1 className="text-lg font-semibold text-foreground">
                 Gov Portal
@@ -108,8 +120,8 @@ export function Sidebar({ onToggle }) {
                 Legislation System
               </p>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         <button
           onClick={handleToggle}

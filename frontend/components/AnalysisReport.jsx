@@ -114,7 +114,13 @@ export default function AnalysisReport({
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={pieData} dataKey="value" outerRadius={90} label>
+                  <Pie
+                    data={pieData}
+                    dataKey="value"
+                    outerRadius={90}
+                    label
+                    isAnimationActive={false}
+                  >
                     {pieData.map((entry, index) => (
                       <Cell
                         key={entry.name}
@@ -158,7 +164,12 @@ export default function AnalysisReport({
                       `${value} Star - ${ratingSentimentMap[value]}`
                     }
                   />
-                  <Bar dataKey="count" fill="#3b82f6" name="Responses" />
+                  <Bar
+                    dataKey="count"
+                    fill="#3b82f6"
+                    name="Responses"
+                    isAnimationActive={false}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -173,7 +184,7 @@ export default function AnalysisReport({
             <img
               src={`data:image/png;base64,${wordcloudB64}`}
               alt="Word Cloud"
-              className="w-full"
+              className="w-full h-[250px] object-contain"
             />
           </div>
         )}
